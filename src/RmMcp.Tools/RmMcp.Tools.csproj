@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RmMcp.Tools</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RmMcp.Tests.Unit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="0.1.0-preview.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RmMcp.Core\RmMcp.Core.csproj" />
+    <ProjectReference Include="..\RmMcp.Sql\RmMcp.Sql.csproj" />
+    <ProjectReference Include="..\RmMcp.Soap\RmMcp.Soap.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "RmMcp@Test2026!"
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./init-corpore.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "RmMcp@Test2026!" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mock-soap:
+    build: ./mock-soap
+    ports:
+      - "8051:8051"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8051/')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s

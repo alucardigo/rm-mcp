@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "rm-mcp": {
+      "command": "dotnet",
+      "args": ["D:\\Dev\\rm-mcp\\src\\RmMcp.Server\\bin\\Debug\\net9.0\\rm-mcp.dll"],
+      "env": {
+        "DOTNET_ROOT": "C:\\Program Files\\dotnet"
+      }
+    }
+  }
+}

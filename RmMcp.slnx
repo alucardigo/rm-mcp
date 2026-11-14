@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RmMcp.Core/RmMcp.Core.csproj" />
+    <Project Path="src/RmMcp.Server/RmMcp.Server.csproj" />
+    <Project Path="src/RmMcp.Soap/RmMcp.Soap.csproj" />
+    <Project Path="src/RmMcp.Sql/RmMcp.Sql.csproj" />
+    <Project Path="src/RmMcp.Tools/RmMcp.Tools.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RmMcp.Tests.Integration/RmMcp.Tests.Integration.csproj" />
+    <Project Path="tests/RmMcp.Tests.Unit/RmMcp.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
