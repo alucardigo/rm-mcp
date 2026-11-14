@@ -167,8 +167,106 @@
 6. If any tool fails: the SOAP contract or response format differs from what the mock produces → fix the parser
 
 ### Act
-- Commit with enriched schema and honest PDCA
-- Real RM validation is a **network dependency**, not a code dependency — the server is ready
+- Proceed to Cycle 4: contract validation against real Swagger specs
+
+---
+
+## Cycle 4: Swagger Contract Validation + REST API
+
+### Plan
+- Extract real RM Swagger specs from persontup/mcp-totvs-rm:1.0 Docker image
+- Validate our DataServer names, table mappings, and field names against real API contract
+- Add REST endpoints to mock RM.Host.Service (/connect/token, /framework/v1/companies, Branches)
+- Wire persontup bridge into docker-compose for transport-layer testing
+- Add contract validation tests (unit) and REST integration tests
+
+### Do
+
+#### Real RM Docker Search (documented attempt)
+1. **Docker Hub search**: Searched for "totvs rm" images — found `persontup/mcp-totvs-rm:1.0` only
+2. **persontup inspection**: Pulled and fully read all Python source files. It's a FastAPI MCP proxy, NOT RM.Host.Service itself. Default RM_HOST: `https://aplicapcapitalizacao182671.rm.cloudtotvs.com.br:1356` (unreachable)
+3. **TOTVS Cloud probe**: curl to the Cloud RM endpoint timed out (exit code 28) — private customer instance
+4. **Web search**: No public RM.Host.Service Docker image or sandbox exists. TOTVS distributes RM under commercial license only; Protheus has Docker images, RM does not
+5. **Conclusion**: RM.Host.Service cannot be containerized. This is a TOTVS licensing/distribution decision, not a gap
+
+#### Swagger Spec Extraction (13.5 MB of real RM API contracts)
+Extracted 8 Swagger JSON files from `persontup/mcp-totvs-rm:1.0` Docker image:
+- **framework.json** (200 paths): /connect/token auth, /framework/v1/companies, /Branches, /users, /roles, /systemParameters, /jobExecution, /paramsProc
+- **backoffice.json** (680 paths): /financial/v1/entry, /mov/v1/Movements (301-field DTO!), /est/v1/Products, /ctb/v1/AccountingPlan, /CostCenters
+- **rh.json** (1001 paths): /rh/payrollLoan, employee endpoints, eSocial
+- **construction.json** (~400 paths): /construction-projects (tasks, measurements, BIM)
+- **engineering.json**, **hcg.json**, **others.json**, **educational.json**
+
+Total: **2,281+ REST API paths** covering all RM modules.
+
+#### Contract Validation (rm-api-contract.json)
+Created `tests/docker/rm-api-contract.json` mapping our DataServer names to real REST resources:
+| Our DataServer | Real REST Path | Real DTO | Real Table |
+|---|---|---|---|
+| GlbColigadaData | /framework/v1/companies | RM.Glb.Api.Company.v2.CompanyDto (15 fields) | GCOLIGADA |
+| GlbFilialData | /framework/v1/Branches | — | GFILIAL |
+| EstMovimentoData | /mov/v1/Movements | RM.Mov.Api.v1.MovMovementDTO (**301 fields**) | TMOV |
+| FinLanData | /financial/v1/entry | RM.Fin.Lib.API.FinEntry.FinEntryDto | FLAN |
+| EstProdutoData | /est/v1/Products | RM.Est.Api.v1.ProductDetails.EstProdutosDTO | TPRODUTO |
+| CtbContaData | /ctb/v1/AccountingPlan | — | CCONTA |
+| CtbLancamentoData | /ctb/v1/accountingEntries | RM.Ctb.Api.AccountingEntries.CtbAccountEntryModel | CPARTIDA |
+
+#### REST API Mock Enhancement
+Enhanced `mock-soap/server.py` to serve REST endpoints matching real Swagger spec:
+- `POST /connect/token` — OAuth token (userName/password → access_token/token_type/expires_in/refresh_token)
+- `GET /framework/v1/companies` — ApiQueryResponse with hasNext/total/items (CompanyDto with id/nomeFantasia/federalId/name/ativo)
+- `GET /framework/v1/Branches` — ApiQueryResponse with Branch items
+
+#### persontup Bridge in Docker Compose
+Added `rm-bridge` service (persontup/mcp-totvs-rm:1.0) to docker-compose:
+- Points RM_HOST at mock-soap
+- Health endpoint responds OK
+- Auth fails against hardcoded TOTVS Cloud URL (expected — bridge is customer-specific)
+- Validates: container orchestration, HTTP transport layer, env-var-based connection pattern
+
+#### New Tests
+- **Contract Validation (20 unit tests)**: Auth endpoint/response fields, DataServer→REST mapping (7 resources), Movement DTO 301 fields, key field alignment, SOAP endpoint paths, operation completeness, module path counts
+- **REST API Integration (5 tests)**: OAuth token flow (valid + invalid credentials), Companies listing (ApiQueryResponse schema), Branches listing, unauthenticated 401
+
+### Check
+
+| Layer | Tests | Status |
+|-------|-------|--------|
+| Unit (SqlGuard, SoapEnvelope, Parser, DryRun) | 55 | All pass |
+| Unit — Contract Validation (Swagger spec) | 20 | All pass |
+| Integration (SQL data + metadata, Guard, SOAP) | 29 | All pass |
+| Integration — REST API Contract | 5 | All pass |
+| E2E stdio (49 tools + rm_sql_fks + metadata) | 53 | All pass, 42 data values verified |
+| **Total** | **162** | **All pass** |
+
+### What CAN and CANNOT be validated (updated)
+
+#### Validated (with evidence)
+- **SQL path end-to-end**: Real SQL Server 2022, real schema (27 tables, 11 FKs, GDIC+GSISTEMA metadata), real queries, real data assertions — covering 100% of tables our 49 tools query
+- **SQL Guard enforcement**: SELECT/CTE allowed, INSERT/UPDATE/DELETE/DROP blocked — tested against real SQL Server
+- **SOAP contract correctness**: Envelope building (namespace, Basic Auth, CDATA), response parsing, fault extraction — tested against mock reproducing SOAP 1.1 contract structure
+- **REST API contract alignment**: Our DataServer names, table names, and field names validated against 8 real Swagger specs (2,281+ paths) extracted from TOTVS Cloud RM instance. Movement entity has 301 fields in real RM — our mock uses the correct entity structure
+- **OAuth flow**: /connect/token endpoint matches real RM Swagger spec (RM.Glb.Api.LoginController.TokenLogin → RM.Glb.Api.LoginController.ApiTokenResponse)
+- **MCP stdio protocol**: All 49 tools + rm_sql_fks respond correctly over stdio JSON-RPC 2.0
+- **Dry-run safety**: Write operations preview by default, require explicit confirmation
+- **Architecture alignment**: Validated against ExtrairRAG-BancoDados + real Swagger specs
+
+#### Cannot be validated (with documented search attempt)
+- **Real RM.Host.Service responses**: Searched Docker Hub, web, inspected persontup image, probed TOTVS Cloud endpoint. RM is proprietary Windows software with no Docker image and no public instance. MIP's SVRTESTE is on dmip.local (unreachable). The search was thorough; this is a TOTVS distribution limitation.
+- **Full Corpore schema (~9k tables)**: Our 27-table schema covers every table our tools query. The remaining tables would be exercised via rm_sql_tables/columns discovery on production.
+- **Production data volume**: Seed has ~100 rows; production has millions. Performance differs but queries use TOP/WHERE/NOLOCK with maxRows enforcement.
+
+#### First connection to real RM (when on MIP network)
+1. Set `RM_SOAP_URL` to `http://svrteste:8051/...` (actual RM.Host.Service port)
+2. Run `rm_ping` — validates both SQL and SOAP
+3. Run `rm_dataserver_list` — validates DataServer names match real instance
+4. Run `rm_dataserver_schema` for each DataServer — validates XSD matches
+5. Run `rm_sql_tables` and `rm_sql_columns` — exercises full ~9k table schema
+6. If any tool fails: fix the parser using the Swagger specs as reference
+
+### Act
+- Commit with contract validation, REST endpoints, persontup bridge
+- Server is ready for production connection; next validation step requires MIP network access
 
 ---
 

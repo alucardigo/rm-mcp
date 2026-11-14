@@ -21,8 +21,29 @@ services:
     ports:
       - "8051:8051"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8051/')"]
+      test: ["CMD", "python", "-c", "import urllib.request,base64; r=urllib.request.Request('http://localhost:8051/wsDataServer/IwsDataServer'); r.add_header('Authorization','Basic '+base64.b64encode(b'mestre:totvs').decode()); urllib.request.urlopen(r)"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 2s
+
+  # persontup/mcp-totvs-rm — real RM MCP bridge (Python FastAPI).
+  # RM_HOST points at mock-soap since no real RM is reachable.
+  # Validates: HTTP transport, REST client wiring, OAuth flow shape.
+  rm-bridge:
+    image: persontup/mcp-totvs-rm:1.0
+    environment:
+      RM_HOST: "http://mock-soap:8051"
+      RM_USER: "mestre"
+      RM_PASSWORD: "totvs"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mock-soap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s

@@ -1,0 +1,162 @@
+{
+  "source": "Extracted from persontup/mcp-totvs-rm:1.0 Docker image (TOTVS Cloud RM Swagger specs)",
+  "auth": {
+    "endpoint": "/connect/token",
+    "method": "POST",
+    "fields": [
+      "userName",
+      "password",
+      "grant_type"
+    ],
+    "response_fields": [
+      "access_token",
+      "expires_in",
+      "refresh_token",
+      "token_type"
+    ]
+  },
+  "rest_api_patterns": {
+    "company": {
+      "path": "/framework/v1/companies",
+      "dto": "RM.Glb.Api.Company.v2.CompanyDto",
+      "fields": [
+        "id",
+        "nomeFantasia",
+        "federalId",
+        "name",
+        "phoneNumber",
+        "email",
+        "ativo"
+      ],
+      "maps_to_dataserver": "GlbColigadaData",
+      "maps_to_table": "GCOLIGADA"
+    },
+    "branch": {
+      "path": "/framework/v1/Branches",
+      "maps_to_dataserver": "GlbFilialData",
+      "maps_to_table": "GFILIAL"
+    },
+    "user": {
+      "path": "/framework/v1/users",
+      "maps_to_table": "GUSUARIO"
+    },
+    "movement": {
+      "path": "/mov/v1/Movements",
+      "dto": "RM.Mov.Api.v1.MovMovementDTO",
+      "field_count": 301,
+      "key_fields": [
+        "companyId",
+        "movementId",
+        "branchId",
+        "movementTypeCode",
+        "status",
+        "number",
+        "registerDate"
+      ],
+      "maps_to_dataserver": "EstMovimentoData",
+      "maps_to_table": "TMOV"
+    },
+    "financial_entry": {
+      "path": "/financial/v1/entry",
+      "dto": "RM.Fin.Lib.API.FinEntry.FinEntryDto",
+      "key_fields": [
+        "companyCode",
+        "finEntryCode",
+        "entryDate",
+        "amount"
+      ],
+      "maps_to_dataserver": "FinLanData",
+      "maps_to_table": "FLAN"
+    },
+    "products": {
+      "path": "/est/v1/Products",
+      "dto": "RM.Est.Api.v1.ProductDetails.EstProdutosDTO",
+      "key_fields": [
+        "internalId",
+        "productCompanyId",
+        "productId",
+        "code",
+        "description"
+      ],
+      "maps_to_dataserver": "EstProdutoData",
+      "maps_to_table": "TPRODUTO"
+    },
+    "accounting_plan": {
+      "path": "/ctb/v1/AccountingPlan",
+      "maps_to_dataserver": "CtbContaData",
+      "maps_to_table": "CCONTA"
+    },
+    "cost_centers": {
+      "path": "/ctb/v1/CostCenters",
+      "maps_to_table": "GCCUSTO"
+    },
+    "accounting_entries": {
+      "path": "/ctb/v1/accountingEntries",
+      "dto": "RM.Ctb.Api.AccountingEntries.CtbAccountEntryModel",
+      "maps_to_dataserver": "CtbLancamentoData",
+      "maps_to_table": "CPARTIDA"
+    }
+  },
+  "soap_endpoints": {
+    "wsDataServer": "/wsDataServer/IwsDataServer",
+    "wsProcess": "/wsProcess/IwsProcess",
+    "operations": {
+      "dataserver": [
+        "ReadView",
+        "ReadRecord",
+        "GetSchema",
+        "SaveRecord",
+        "DeleteRecord"
+      ],
+      "process": [
+        "ExecuteWithXmlParams",
+        "ReadJobStatus"
+      ]
+    }
+  },
+  "modules": {
+    "framework": {
+      "spec": "framework.json",
+      "paths": 200,
+      "key_resources": [
+        "companies",
+        "Branches",
+        "users",
+        "roles",
+        "systemParameters",
+        "jobExecution"
+      ]
+    },
+    "backoffice": {
+      "spec": "backoffice.json",
+      "paths": 680,
+      "key_resources": [
+        "Movements",
+        "entry",
+        "Products",
+        "AccountingPlan",
+        "CostCenters"
+      ]
+    },
+    "rh": {
+      "spec": "rh.json",
+      "paths": 1001,
+      "key_resources": [
+        "employees",
+        "absences",
+        "departments",
+        "positions"
+      ]
+    },
+    "construction": {
+      "spec": "construction.json",
+      "paths_estimate": 400,
+      "key_resources": [
+        "projects",
+        "tasks",
+        "measurements",
+        "bim"
+      ]
+    }
+  }
+}

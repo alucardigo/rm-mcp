@@ -225,6 +225,11 @@ def escape_xml(xml_str):
 
 class RmSoapHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # REST /connect/token discovery (no auth required per OAuth spec)
+        if self.path in ("/api/connect/token", "/connect/token"):
+            self._send_json(200, {"grant_types_supported": ["password", "refresh_token"]})
+            return
+
         if not self._check_auth():
             return
 
@@ -233,6 +238,21 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write("\n".join(DATASERVER_LIST).encode("utf-8"))
+            return
+
+        # REST framework endpoints matching real Swagger spec paths
+        if "/framework/v1/companies" in self.path:
+            self._send_json(200, {"hasNext": False, "total": 2, "items": [
+                {"id": 1, "nomeFantasia": "MIP Engenharia", "federalId": "12345678000100", "name": "MIP Engenharia S.A.", "ativo": True},
+                {"id": 2, "nomeFantasia": "MIP Construcoes", "federalId": "98765432000100", "name": "MIP Construcoes Ltda.", "ativo": True}
+            ]})
+            return
+
+        if "/framework/v1/Branches" in self.path:
+            self._send_json(200, {"hasNext": False, "total": 2, "items": [
+                {"id": "1.1", "companyId": 1, "name": "Matriz RJ"},
+                {"id": "1.2", "companyId": 1, "name": "Filial SP"}
+            ]})
             return
 
         if "MEX?wsdl" in self.path or "wsDataServer" in self.path:
@@ -250,11 +270,32 @@ class RmSoapHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+
+        # REST OAuth /connect/token — no Basic auth; uses grant_type=password
+        if self.path in ("/api/connect/token", "/connect/token"):
+            import json as _json
+            try:
+                payload = _json.loads(body) if body.strip().startswith("{") else dict(x.split("=", 1) for x in body.split("&"))
+            except Exception:
+                payload = {}
+            user = payload.get("userName", payload.get("username", ""))
+            pwd = payload.get("password", "")
+            if user == VALID_USER and pwd == VALID_PASS:
+                self._send_json(200, {
+                    "access_token": "mock-jwt-token-for-testing",
+                    "token_type": "bearer",
+                    "expires_in": 3600,
+                    "refresh_token": "mock-refresh-token"
+                })
+            else:
+                self._send_json(401, {"error": "invalid_grant", "error_description": "Invalid username or password"})
+            return
+
         if not self._check_auth():
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode("utf-8")
         soap_action = self.headers.get("SOAPAction", "").strip('"')
 
         operation = soap_action.rsplit("/", 1)[-1] if "/" in soap_action else ""
@@ -300,6 +341,15 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/xml; charset=utf-8")
             self.end_headers()
             self.wfile.write(fault.encode("utf-8"))
+
+    def _send_json(self, code, data):
+        import json as _json
+        body = _json.dumps(data).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _check_auth(self):
         auth = self.headers.get("Authorization", "")
