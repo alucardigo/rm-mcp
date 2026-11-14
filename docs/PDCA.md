@@ -507,6 +507,54 @@ The rm-mcp server is validated end-to-end through three independent validation l
    authenticates, discovers 1,430 tools from real Swagger specs, and executes calls through our
    mock — proving our mock implements the same API contract a real RM client expects.
 
+### Cycle 6b: Persontup Cross-Validation
+
+Fixed mock-soap to match the EXACT API contract that persontup's RMRestClient
+(a real third-party RM client built by T-UP Soluções) expects:
+
+1. **Query string stripping** — `/RMSRestDataServer/rest/{ds}?start=0&limit=10` was being
+   treated as DataServer name `GlbColigadaData?start=0&limit=10` (404). Fixed: strip `?` before parsing.
+2. **GET /rest/{ds}** (list without action) — persontup calls `get_all()` with no subpath action.
+   Mock now returns JSON array of records at this path.
+3. **GET /rest/{ds}/{id}** (single record by ID) — persontup calls `get(ds, id)`. Mock now
+   returns a single JSON object.
+4. **GET /service/{ds}/schema** — persontup calls `.json()` on the response. Changed from
+   XML (xs:schema) to JSON `{dataServer, fields: [{name, type, pk}]}`.
+5. **GET /service/{ds}** (WADL) — persontup calls `get_wadl()`. Added WADL endpoint.
+6. **POST returns 201** — persontup expects 201 Created for new records. Changed from 200.
+7. **PUT/PATCH response** — returns `{id, NOME}` matching persontup's assertion patterns.
+
+**Cross-validation result** (running persontup's ACTUAL Python client against our mock):
+```
+get_available_services: OK (7 services)
+get_service_schema:     OK (6 fields)
+get_all:                OK (2 records)
+get_by_id:              OK (has CODCOLIGADA)
+create:                 OK
+update:                 OK (has NOME)
+update_partial:         OK
+delete:                 OK (204)
+get_wadl:               OK (<application>)
+bearer_flow:            OK (2 records)
+— 10/10 operations pass
+```
+
+Added PersontupCrossValidationTests (10 tests) that replicate the exact HTTP requests
+persontup's rm_rest.py makes, codifying the cross-validation in our .NET test suite.
+
+### Check (final)
+
+| Layer | Tests | Status |
+|-------|-------|--------|
+| Unit (SqlGuard, SoapEnvelope, Parser, DryRun, Contract) | 75 | All pass |
+| Integration — SQL + SOAP + REST | 34 | All pass |
+| Integration — Bridge Cross-Validation | 12 | All pass |
+| Integration — E2E stdio (53 MCP tools) | 24 | All pass |
+| Integration — Live RM Contract (TOTVS Cloud) | 14 | All pass |
+| Integration — Authenticated Docker RM | 17 | All pass |
+| **Integration — Persontup Cross-Validation** | **10** | **All pass** |
+| **Total** | **186** | **All pass** |
+
 ### Act
 - Implementation and validation complete
 - One-command `validate-real-rm.sh` ready for MIP network connection

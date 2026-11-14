@@ -251,13 +251,25 @@ class RmSoapHandler(BaseHTTPRequestHandler):
 
         # REST DataServer paths (rm_rest.py pattern: /RMSRestDataServer/rest/{ds}/{action})
         if "/RMSRestDataServer/rest/" in self.path:
-            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            raw = self.path.split("/RMSRestDataServer/rest/")[1]
+            raw = raw.split("?")[0]  # strip query string
+            parts = [p for p in raw.split("/") if p]
             ds_name = parts[0] if parts else ""
+            record_id = parts[1] if len(parts) > 1 else None
             if ds_name in DATASERVER_LIST:
-                import json as _json
-                self._send_json(200, {"dataServer": ds_name, "items": [
-                    {"CODCOLIGADA": 1, "source": "mock-rest", "dataServer": ds_name}
-                ], "hasNext": False, "total": 1})
+                if record_id and not record_id.startswith("ReadView"):
+                    # GET /rest/{ds}/{id} — single record by ID
+                    self._send_json(200, {"CODCOLIGADA": 1, "ID": int(record_id) if record_id.isdigit() else record_id, "dataServer": ds_name, "source": "mock-rest"})
+                else:
+                    # GET /rest/{ds} or /rest/{ds}/ReadView — list of records
+                    data = DATASERVER_READVIEW.get(ds_name)
+                    if data and "GCOLIGADA" in ds_name.upper() or ds_name == "GlbColigadaData":
+                        self._send_json(200, [
+                            {"CODCOLIGADA": 1, "NOME": "MIP Engenharia S.A.", "NOMEFANTASIA": "MIP", "CGCCFO": "12345678000190"},
+                            {"CODCOLIGADA": 2, "NOME": "MIP Construcoes Ltda", "NOMEFANTASIA": "MIP Construcoes", "CGCCFO": "98765432000190"},
+                        ])
+                    else:
+                        self._send_json(200, [{"CODCOLIGADA": 1, "source": "mock-rest", "dataServer": ds_name}])
             else:
                 self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
             return
@@ -275,15 +287,59 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             self.wfile.write("\n".join(DATASERVER_LIST).encode("utf-8"))
             return
 
-        if "/RMSRestDataServer/service/" in self.path and "/schema" in self.path:
-            parts = self.path.split("/service/")[1].split("/")
+        if "/RMSRestDataServer/service/" in self.path:
+            raw = self.path.split("/service/")[1].split("?")[0]
+            parts = [p for p in raw.split("/") if p]
             ds_name = parts[0] if parts else ""
-            schema = DATASERVER_SCHEMAS.get(ds_name, DATASERVER_SCHEMAS.get("GlbColigadaData", ""))
-            self.send_response(200)
-            self.send_header("Content-Type", "text/xml; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(schema.encode("utf-8"))
-            return
+            has_schema = len(parts) > 1 and parts[1] == "schema"
+
+            if has_schema:
+                # GET /service/{ds}/schema — JSON schema (persontup client calls .json())
+                schema_fields = {
+                    "GlbColigadaData": [
+                        {"name": "CODCOLIGADA", "type": "int", "pk": True},
+                        {"name": "NOME", "type": "string"},
+                        {"name": "NOMEFANTASIA", "type": "string"},
+                        {"name": "CGCCFO", "type": "string"},
+                        {"name": "CIDADE", "type": "string"},
+                        {"name": "ESTADO", "type": "string"},
+                    ],
+                    "RhuFuncDados": [
+                        {"name": "CODCOLIGADA", "type": "int", "pk": True},
+                        {"name": "CHAPA", "type": "string", "pk": True},
+                        {"name": "NOME", "type": "string"},
+                        {"name": "CODSITUACAO", "type": "string"},
+                        {"name": "DATAADMISSAO", "type": "date"},
+                        {"name": "CODSECAO", "type": "string"},
+                        {"name": "CODFUNCAO", "type": "string"},
+                        {"name": "SALARIO", "type": "decimal"},
+                    ],
+                }
+                fields = schema_fields.get(ds_name, [{"name": "CODCOLIGADA", "type": "int", "pk": True}])
+                self._send_json(200, {"dataServer": ds_name, "fields": fields})
+                return
+            else:
+                # GET /service/{ds} — WADL (application description)
+                wadl = f"""<?xml version="1.0" encoding="utf-8"?>
+<application xmlns="http://wadl.dev.java.net/2009/02">
+  <resources base="/RMSRestDataServer/rest/{ds_name}">
+    <resource path="/">
+      <method name="GET"><doc>List records</doc></method>
+      <method name="POST"><doc>Create record</doc></method>
+    </resource>
+    <resource path="{{id}}">
+      <method name="GET"><doc>Get by ID</doc></method>
+      <method name="PUT"><doc>Update record</doc></method>
+      <method name="PATCH"><doc>Partial update</doc></method>
+      <method name="DELETE"><doc>Delete record</doc></method>
+    </resource>
+  </resources>
+</application>"""
+                self.send_response(200)
+                self.send_header("Content-Type", "application/xml; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(wadl.encode("utf-8"))
+                return
 
         # Catch-all REST API handler for any /api/... path not handled above
         # Returns ApiQueryResponse format matching real RM Swagger specs
@@ -337,10 +393,11 @@ class RmSoapHandler(BaseHTTPRequestHandler):
         # REST DataServer write paths (rm_rest.py: POST/PUT/PATCH to /RMSRestDataServer/rest/{ds}/...)
         if "/RMSRestDataServer/rest/" in self.path:
             import json as _json
-            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            raw = self.path.split("/RMSRestDataServer/rest/")[1].split("?")[0]
+            parts = [p for p in raw.split("/") if p]
             ds_name = parts[0] if parts else ""
             if ds_name in DATASERVER_LIST:
-                self._send_json(200, {"status": "ok", "dataServer": ds_name, "operation": "write"})
+                self._send_json(201, {"id": 1, "status": "ok", "dataServer": ds_name, "operation": "write"})
             else:
                 self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
             return
@@ -404,14 +461,17 @@ class RmSoapHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             return
         if "/RMSRestDataServer/rest/" in self.path:
-            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            raw = self.path.split("/RMSRestDataServer/rest/")[1].split("?")[0]
+            parts = [p for p in raw.split("/") if p]
             ds_name = parts[0] if parts else ""
+            record_id = parts[1] if len(parts) > 1 else None
             if ds_name in DATASERVER_LIST:
                 if method == "DELETE":
                     self.send_response(204)
                     self.end_headers()
                 else:
-                    self._send_json(200, {"status": "ok", "dataServer": ds_name, "operation": method.lower()})
+                    resp = {"id": int(record_id) if record_id and record_id.isdigit() else 1, "NOME": "Updated"}
+                    self._send_json(200, resp)
             else:
                 self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
         else:

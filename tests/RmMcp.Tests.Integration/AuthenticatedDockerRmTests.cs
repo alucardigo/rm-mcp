@@ -148,7 +148,7 @@ public class AuthenticatedDockerRmTests : IDisposable
     }
 
     [Fact]
-    public async Task DataServerRest_Schema_ReturnsXsd()
+    public async Task DataServerRest_Schema_ReturnsFieldDefinitions()
     {
         SetBasicAuth();
 
@@ -156,8 +156,16 @@ public class AuthenticatedDockerRmTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("xs:schema", body);
-        Assert.Contains("CODCOLIGADA", body);
+        var json = JsonSerializer.Deserialize<JsonElement>(body);
+
+        Assert.True(json.TryGetProperty("dataServer", out var ds));
+        Assert.Equal("GlbColigadaData", ds.GetString());
+        Assert.True(json.TryGetProperty("fields", out var fields));
+        Assert.True(fields.GetArrayLength() > 0);
+
+        var firstField = fields[0];
+        Assert.True(firstField.TryGetProperty("name", out var name));
+        Assert.Equal("CODCOLIGADA", name.GetString());
     }
 
     [Fact]
@@ -167,7 +175,9 @@ public class AuthenticatedDockerRmTests : IDisposable
 
         var content = new StringContent("{\"CODCOLIGADA\":1}", Encoding.UTF8, "application/json");
         var response = await _client.PostAsync("/RMSRestDataServer/rest/GlbColigadaData/SaveRecord", content);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.Created,
+            $"Expected 200 or 201, got {(int)response.StatusCode}");
     }
 
     // ─── SOAP DataServer ──────────────────────────────────────────────
