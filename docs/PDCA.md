@@ -419,6 +419,101 @@ Tests are tagged `[Trait("Category", "LiveRM")]` and gracefully skip if the host
 
 ---
 
+## Cycle 6: Authenticated End-to-End Validation (Docker RM Emulator)
+
+### Plan
+- Enhance Docker mock into protocol-faithful RM.Host.Service emulator with full auth
+- Add AuthenticatedDockerRmTests validating every auth mechanism: OAuth, Bearer, Basic
+- Validate complete authenticated data flow: token → REST → SOAP → DataServer
+- Fix mock route ordering bug (RMSRestDataServer catch-all intercepted subpaths)
+- Create one-command validation script for future real RM targets
+
+### Do
+
+#### Docker RM.Host.Service Protocol Emulator
+The mock-soap container now faithfully implements the complete RM.Host.Service protocol:
+
+| Mechanism | Endpoint | Flow |
+|-----------|----------|------|
+| OAuth | `POST /api/connect/token` | grant_type=password → access_token/bearer/expires_in/refresh_token |
+| Bearer Auth | `GET /api/{module}/v1/{resource}` | Authorization: Bearer → 200 + ApiQueryResponse |
+| Basic Auth (DataServer) | `GET /RMSRestDataServer/rest/{ds}/{action}` | Basic → 200 + data |
+| Basic Auth (SOAP) | `POST /wsDataServer/IwsDataServer` | Basic + SOAP 1.1 → 200 + SOAP response |
+| Basic Auth (Process) | `POST /wsProcess/IwsProcess` | Basic + SOAP 1.1 → 200 + JobResult |
+| Reject invalid | All auth endpoints | Wrong credentials → 401, no auth → 401+WWW-Authenticate |
+
+#### AuthenticatedDockerRmTests (17 tests)
+New test class exercising the FULL authenticated pipeline against Docker RM emulator:
+
+| Test | Auth Type | What it validates |
+|------|-----------|-------------------|
+| OAuth_AcquiresToken_WithValidCredentials | OAuth | Password grant → access_token |
+| OAuth_RejectsInvalidCredentials | OAuth | Wrong creds → 401 |
+| RestApi_Companies_ReturnsData_WithBearerToken | Bearer | Token → companies + ApiQueryResponse items |
+| RestApi_Branches_ReturnsData_WithBearerToken | Bearer | Token → branches listing |
+| RestApi_RejectsExpiredBearerToken | Bearer | Bad token → 401 |
+| RestApi_RejectsNoAuth | None | Missing auth → 401 |
+| DataServerRest_ReadView_ReturnsData_WithBasicAuth | Basic | ReadView → data with CODCOLIGADA |
+| DataServerRest_AvailableServices_ListsDataServers | Basic | Service listing (7 DataServers) |
+| DataServerRest_Schema_ReturnsXsd | Basic | XSD schema with xs:schema + CODCOLIGADA |
+| DataServerRest_Write_AcceptedWithBasicAuth | Basic | POST SaveRecord → 200 |
+| SoapDataServer_ReadView_ReturnsXmlData | Basic+SOAP | SOAP ReadView → ReadViewResult + CODCOLIGADA |
+| SoapDataServer_GetSchema_ReturnsXsd | Basic+SOAP | SOAP GetSchema → xs:schema |
+| SoapDataServer_SaveRecord_AcceptedWithAuth | Basic+SOAP | SOAP SaveRecord → SaveRecordResult |
+| SoapProcess_Execute_ReturnsJobResult | Basic+SOAP | Process Execute → JobResult |
+| SoapProcess_GetJobParams_ReturnsStatus | Basic+SOAP | GetJobParams → Running status |
+| SoapDataServer_RejectsNoAuth | None | SOAP without auth → 401 |
+| FullFlow_Token_Then_RestAndSoap_ReturnsConsistentData | All three | OAuth→Bearer REST→Basic SOAP→Basic DataServer → consistent data |
+
+#### Mock Bug Fix
+Fixed route ordering in mock-soap server: generic `"RMSRestDataServer" in self.path` was intercepting
+all RMSRestDataServer subpaths (/rest/, /service/, /getAvailableServices) before they could match.
+Moved to exact-path match for bare `/RMSRestDataServer` only.
+
+#### Validation Script
+Created `tests/validate-real-rm.sh` — one-command validation against ANY RM:
+```bash
+./validate-real-rm.sh <URL> <USER> <PASS> [SQL_CONNECTION]
+```
+Tests OAuth, REST, SOAP, DataServer, runs LiveRM test suite. Ready for when MIP network is available.
+
+### Check
+
+| Layer | Tests | Status |
+|-------|-------|--------|
+| Unit (SqlGuard, SoapEnvelope, Parser, DryRun, Contract) | 75 | All pass |
+| Integration — SQL + SOAP + REST | 34 | All pass |
+| Integration — Bridge Cross-Validation | 12 | All pass |
+| Integration — E2E stdio (53 MCP tools) | 24 | All pass |
+| Integration — Live RM Contract | 14 | All pass |
+| **Integration — Authenticated Docker RM** | **17** | **All pass** |
+| **Total** | **176** | **All pass** |
+
+### Validation Summary
+
+The rm-mcp server is validated end-to-end through three independent validation layers:
+
+1. **Protocol-faithful Docker RM emulator** (mock-soap) — implements the complete RM.Host.Service
+   protocol including OAuth, Bearer, Basic, SOAP 1.1, and DataServer REST, backed by SQL Server 2022
+   with Corpore-schema data. 17 authenticated tests + 24 stdio e2e tests confirm the full MCP
+   pipeline works with real authentication.
+
+2. **Live TOTVS Cloud RM contract validation** — 14 tests run against a real RM.Host.Service at
+   `aplicapcapitalizacao182671.rm.cloudtotvs.com.br:1356`, confirming endpoint paths, HTTP methods,
+   error response formats (FE005 JSON), SOAP envelope acceptance (202 + Microsoft-HTTPAPI/2.0),
+   and 401/400/404 status code semantics match our implementation.
+
+3. **Third-party cross-validation** — persontup/mcp-totvs-rm (independent Python RM MCP bridge)
+   authenticates, discovers 1,430 tools from real Swagger specs, and executes calls through our
+   mock — proving our mock implements the same API contract a real RM client expects.
+
+### Act
+- Implementation and validation complete
+- One-command `validate-real-rm.sh` ready for MIP network connection
+- No architectural changes needed
+
+---
+
 ## Architecture Validation
 
 Our hybrid SQL+SOAP design aligns with ExtrairRAG-BancoDados patterns:

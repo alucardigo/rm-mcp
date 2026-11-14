@@ -233,13 +233,6 @@ class RmSoapHandler(BaseHTTPRequestHandler):
         if not self._check_auth():
             return
 
-        if "RMSRestDataServer" in self.path:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.wfile.write("\n".join(DATASERVER_LIST).encode("utf-8"))
-            return
-
         # REST framework endpoints matching real Swagger spec paths
         # Bridge prepends /api basePath, so handle both /api/... and /... paths
         if "/framework/v1/companies" in self.path:
@@ -272,6 +265,14 @@ class RmSoapHandler(BaseHTTPRequestHandler):
         if "/RMSRestDataServer/getAvailableServices" in self.path:
             import json as _json
             self._send_json(200, [{"name": ds} for ds in DATASERVER_LIST])
+            return
+
+        # Bare /RMSRestDataServer without subpath — list available DataServers
+        if self.path.rstrip("/") == "/RMSRestDataServer" or self.path == "/RMSRestDataServer/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("\n".join(DATASERVER_LIST).encode("utf-8"))
             return
 
         if "/RMSRestDataServer/service/" in self.path and "/schema" in self.path:
