@@ -142,4 +142,71 @@ public class SqlQueryTests
         Assert.Single(result.Rows);
         Assert.Equal("12.1.2406", result.Rows[0]["VERSAO"]);
     }
+
+    [Fact]
+    public async Task Query_Gdic_TableDescriptions()
+    {
+        using var executor = new SqlQueryExecutor(_docker.SqlConnectionString);
+        var result = await executor.ExecuteAsync(
+            "SELECT TABELA, DESCRICAO FROM GDIC WHERE COLUNA = '#' ORDER BY TABELA");
+
+        Assert.True(result.RowCount >= 20);
+        var pfuncRow = result.Rows.First(r => (string)r["TABELA"]! == "PFUNC");
+        Assert.Contains("funcionarios", ((string)pfuncRow["DESCRICAO"]!).ToLower());
+    }
+
+    [Fact]
+    public async Task Query_Gdic_ColumnDescriptions()
+    {
+        using var executor = new SqlQueryExecutor(_docker.SqlConnectionString);
+        var result = await executor.ExecuteAsync(
+            "SELECT COLUNA, DESCRICAO FROM GDIC WHERE TABELA = 'PFUNC' AND COLUNA <> '#' ORDER BY COLUNA");
+
+        Assert.True(result.RowCount >= 3);
+        var situacao = result.Rows.First(r => (string)r["COLUNA"]! == "CODSITUACAO");
+        Assert.Contains("A=Ativo", (string)situacao["DESCRICAO"]!);
+    }
+
+    [Fact]
+    public async Task Query_Gsistema_ModuleRegistry()
+    {
+        using var executor = new SqlQueryExecutor(_docker.SqlConnectionString);
+        var result = await executor.ExecuteAsync(
+            "SELECT CODSISTEMA, DESCRICAO FROM GSISTEMA ORDER BY CODSISTEMA");
+
+        Assert.True(result.RowCount >= 10);
+        var folha = result.Rows.First(r => (string)r["CODSISTEMA"]! == "P");
+        Assert.Contains("Folha", (string)folha["DESCRICAO"]!);
+    }
+
+    [Fact]
+    public async Task Query_CentroCusto_ReturnsSeeded()
+    {
+        using var executor = new SqlQueryExecutor(_docker.SqlConnectionString);
+        var result = await executor.ExecuteAsync(
+            "SELECT CODCCUSTO, NOME, ATIVO FROM GCCUSTO WHERE CODCOLIGADA = 1 ORDER BY CODCCUSTO");
+
+        Assert.Equal(4, result.RowCount);
+        Assert.Equal("ADMINISTRACAO", result.Rows[0]["NOME"]);
+        Assert.Equal(0, result.Rows[3]["ATIVO"]);
+    }
+
+    [Fact]
+    public async Task Query_ForeignKeys_Exist()
+    {
+        using var executor = new SqlQueryExecutor(_docker.SqlConnectionString);
+        var result = await executor.ExecuteAsync("""
+            SELECT fk.name AS FK_NAME
+            FROM sys.foreign_keys fk
+            JOIN sys.tables t ON fk.parent_object_id = t.object_id
+            WHERE t.name = 'PFUNC'
+            ORDER BY fk.name
+            """);
+
+        Assert.True(result.RowCount >= 3);
+        var fkNames = result.Rows.Select(r => (string)r["FK_NAME"]!).ToList();
+        Assert.Contains("FK_PFUNC_GCOLIGADA", fkNames);
+        Assert.Contains("FK_PFUNC_PPESSOA", fkNames);
+        Assert.Contains("FK_PFUNC_PSECAO", fkNames);
+    }
 }

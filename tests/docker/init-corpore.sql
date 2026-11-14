@@ -345,6 +345,19 @@ CREATE TABLE ZMIP_OBRA_CONFIG (
 INSERT INTO ZMIP_OBRA_CONFIG VALUES (1, '357', 'ATIVA', 'S');
 INSERT INTO ZMIP_OBRA_CONFIG VALUES (1, '357', 'RESPONSAVEL', 'Joao Silva');
 
+-- Centro de custo
+CREATE TABLE GCCUSTO (
+    CODCOLIGADA INT,
+    CODCCUSTO VARCHAR(20),
+    NOME VARCHAR(200),
+    ATIVO INT DEFAULT 1,
+    PRIMARY KEY (CODCOLIGADA, CODCCUSTO)
+);
+INSERT INTO GCCUSTO VALUES (1, '001', 'ADMINISTRACAO', 1);
+INSERT INTO GCCUSTO VALUES (1, '002', 'ENGENHARIA', 1);
+INSERT INTO GCCUSTO VALUES (1, '003', 'OBRA 357', 1);
+INSERT INTO GCCUSTO VALUES (1, '004', 'OBRA 358 (ENCERRADA)', 0);
+
 -- DataServer names (for discovery)
 CREATE TABLE GDATASERVERNAME (
     NOME VARCHAR(100) PRIMARY KEY
@@ -358,5 +371,106 @@ INSERT INTO GDATASERVERNAME VALUES ('CtbLancamentoData');
 INSERT INTO GDATASERVERNAME VALUES ('PtoMarcacaoData');
 GO
 
-PRINT 'Corpore test schema created successfully with sample data.';
+-- RM module registry (ExtrairRAG pattern: GSISTEMA for module discovery)
+CREATE TABLE GSISTEMA (
+    CODSISTEMA VARCHAR(5) PRIMARY KEY,
+    DESCRICAO VARCHAR(200),
+    ATIVO INT DEFAULT 1
+);
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('A', 'Gestao de Ponto');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('C', 'Contabilidade');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('E', 'Estoque e Compras');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('F', 'Financeiro');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('G', 'Globais');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('K', 'Integracao Contabil');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('M', 'Construcao e Projetos');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('N', 'Fiscal');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('P', 'Folha de Pagamento');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('T', 'Gestao de Estoque');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('V', 'Gestao de Pessoas');
+INSERT INTO GSISTEMA (CODSISTEMA, DESCRICAO) VALUES ('Z', 'Customizacoes');
+GO
+
+-- RM data dictionary (ExtrairRAG pattern: GDIC for table/column descriptions)
+-- COLUNA='#' means table-level description; otherwise column-level
+CREATE TABLE GDIC (
+    TABELA VARCHAR(100),
+    COLUNA VARCHAR(100),
+    DESCRICAO VARCHAR(500),
+    PRIMARY KEY (TABELA, COLUNA)
+);
+-- Table-level descriptions (COLUNA='#')
+INSERT INTO GDIC VALUES ('GCOLIGADA', '#', 'Cadastro de coligadas (empresas do grupo)');
+INSERT INTO GDIC VALUES ('GFILIAL', '#', 'Cadastro de filiais das coligadas');
+INSERT INTO GDIC VALUES ('GUSUARIO', '#', 'Cadastro de usuarios do sistema RM');
+INSERT INTO GDIC VALUES ('PFUNC', '#', 'Cadastro de funcionarios (folha de pagamento)');
+INSERT INTO GDIC VALUES ('PFHSTFUN', '#', 'Historico funcional do funcionario (promocoes, transferencias, meritos)');
+INSERT INTO GDIC VALUES ('PDEPEND', '#', 'Dependentes do funcionario para IR e salario-familia');
+INSERT INTO GDIC VALUES ('PFENCARGO', '#', 'Encargos e proventos da folha de pagamento mensal');
+INSERT INTO GDIC VALUES ('PSECAO', '#', 'Secoes/departamentos organizacionais');
+INSERT INTO GDIC VALUES ('PFUNCAO', '#', 'Cadastro de funcoes (cargos)');
+INSERT INTO GDIC VALUES ('PPESSOA', '#', 'Cadastro de pessoas fisicas (dados pessoais)');
+INSERT INTO GDIC VALUES ('AAFDT', '#', 'Apuracao de frequencia diaria (ponto eletronico)');
+INSERT INTO GDIC VALUES ('AOCORRENCIACALCULADAAM', '#', 'Ocorrencias calculadas do ponto (horas extras, atrasos, faltas)');
+INSERT INTO GDIC VALUES ('FCFO', '#', 'Cadastro de clientes, fornecedores e outros (Cli/For/Outros)');
+INSERT INTO GDIC VALUES ('TPRODUTO', '#', 'Cadastro de produtos e servicos');
+INSERT INTO GDIC VALUES ('TMOV', '#', 'Movimentos do estoque/compras (OC, NF, requisicoes)');
+INSERT INTO GDIC VALUES ('TITMMOV', '#', 'Itens dos movimentos (detalhamento linha a linha)');
+INSERT INTO GDIC VALUES ('FLAN', '#', 'Lancamentos financeiros (contas a pagar e receber)');
+INSERT INTO GDIC VALUES ('FLANBAIXA', '#', 'Baixas (pagamentos/recebimentos) dos lancamentos financeiros');
+INSERT INTO GDIC VALUES ('CCONTA', '#', 'Plano de contas contabil');
+INSERT INTO GDIC VALUES ('CPARTIDA', '#', 'Partidas contabeis (lancamentos debito/credito)');
+INSERT INTO GDIC VALUES ('GPROCESSO', '#', 'Cadastro de processos do servidor RM (jobs)');
+INSERT INTO GDIC VALUES ('GCCUSTO', '#', 'Cadastro de centros de custo');
+INSERT INTO GDIC VALUES ('ZMIP_OBRA_CONFIG', '#', 'Tabela customizada MIP: parametros por obra');
+-- Column-level descriptions (selected key columns)
+INSERT INTO GDIC VALUES ('PFUNC', 'CODCOLIGADA', 'Codigo da coligada (FK para GCOLIGADA)');
+INSERT INTO GDIC VALUES ('PFUNC', 'CHAPA', 'Numero da chapa do funcionario (identificador unico por coligada)');
+INSERT INTO GDIC VALUES ('PFUNC', 'CODSITUACAO', 'Situacao do funcionario: A=Ativo, D=Demitido, F=Ferias, T=Transferido');
+INSERT INTO GDIC VALUES ('PFUNC', 'SALARIO', 'Salario atual do funcionario');
+INSERT INTO GDIC VALUES ('TMOV', 'CODTMV', 'Tipo de movimento (1.1.01=OC, 1.2.01=NF entrada, 2.1.01=NF saida)');
+INSERT INTO GDIC VALUES ('TMOV', 'STATUS', 'Status do movimento: A=Aberto, P=Pendente, E=Encerrado, C=Cancelado');
+INSERT INTO GDIC VALUES ('FLAN', 'PAESSION', 'Natureza: 1=Pagar, 2=Receber');
+INSERT INTO GDIC VALUES ('FLAN', 'STATUSLAN', 'Status: 0=Aberto, 1=Baixado, 2=Parcial, 9=Cancelado');
+INSERT INTO GDIC VALUES ('CPARTIDA', 'DEBCRED', 'Tipo da partida: D=Debito, C=Credito');
+INSERT INTO GDIC VALUES ('GCOLIGADA', 'CODCOLIGADA', 'Codigo unico da coligada (empresa)');
+INSERT INTO GDIC VALUES ('GCOLIGADA', 'CGCCFO', 'CNPJ da coligada');
+GO
+
+-- Foreign key constraints (production Corpore has these; validate our schema consistency)
+ALTER TABLE GFILIAL ADD CONSTRAINT FK_GFILIAL_GCOLIGADA
+    FOREIGN KEY (CODCOLIGADA) REFERENCES GCOLIGADA(CODCOLIGADA);
+
+ALTER TABLE PFUNC ADD CONSTRAINT FK_PFUNC_GCOLIGADA
+    FOREIGN KEY (CODCOLIGADA) REFERENCES GCOLIGADA(CODCOLIGADA);
+
+ALTER TABLE PFUNC ADD CONSTRAINT FK_PFUNC_PPESSOA
+    FOREIGN KEY (CODPESSOA) REFERENCES PPESSOA(CODIGO);
+
+ALTER TABLE PFUNC ADD CONSTRAINT FK_PFUNC_PSECAO
+    FOREIGN KEY (CODCOLIGADA, CODSECAO) REFERENCES PSECAO(CODCOLIGADA, CODIGO);
+
+ALTER TABLE PFUNC ADD CONSTRAINT FK_PFUNC_PFUNCAO
+    FOREIGN KEY (CODCOLIGADA, CODFUNCAO) REFERENCES PFUNCAO(CODCOLIGADA, CODIGO);
+
+ALTER TABLE TITMMOV ADD CONSTRAINT FK_TITMMOV_TMOV
+    FOREIGN KEY (CODCOLIGADA, IDMOV) REFERENCES TMOV(CODCOLIGADA, IDMOV);
+
+ALTER TABLE TITMMOV ADD CONSTRAINT FK_TITMMOV_TPRODUTO
+    FOREIGN KEY (CODCOLIGADA, IDPRD) REFERENCES TPRODUTO(CODCOLIGADA, IDPRD);
+
+ALTER TABLE TMOV ADD CONSTRAINT FK_TMOV_GCOLIGADA
+    FOREIGN KEY (CODCOLIGADA) REFERENCES GCOLIGADA(CODCOLIGADA);
+
+ALTER TABLE FLAN ADD CONSTRAINT FK_FLAN_GCOLIGADA
+    FOREIGN KEY (CODCOLIGADA) REFERENCES GCOLIGADA(CODCOLIGADA);
+
+ALTER TABLE FLANBAIXA ADD CONSTRAINT FK_FLANBAIXA_FLAN
+    FOREIGN KEY (CODCOLIGADA, IDLAN) REFERENCES FLAN(CODCOLIGADA, IDLAN);
+
+ALTER TABLE CCONTA ADD CONSTRAINT FK_CCONTA_GCOLIGADA
+    FOREIGN KEY (CODCOLIGADA) REFERENCES GCOLIGADA(CODCOLIGADA);
+GO
+
+PRINT 'Corpore test schema created: 28 tables, 12 FKs, GDIC dictionary, GSISTEMA modules.';
 GO
