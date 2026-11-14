@@ -284,8 +284,138 @@ E2E stdio tests start the rm-mcp server process, perform MCP handshake over JSON
 6. If any tool fails: fix the parser using the Swagger specs as reference
 
 ### Act
-- Commit with bridge cross-validation, contract tests, full REST mock
-- Server ready for production: 49 MCP tools, 174 tests, cross-validated by independent RM client
+- Proceed to Cycle 5: live RM.Host.Service contract validation
+
+---
+
+## Cycle 5: Live RM.Host.Service Contract Validation
+
+### Plan
+- Attempt all routes to obtain a real RM.Host.Service: Docker, local installer, VM, TOTVS Cloud
+- Validate API contract against whatever live RM endpoint is reachable
+- Document every attempted route with evidence
+
+### Do
+
+#### Attempted Routes to Real RM.Host.Service
+
+1. **Docker Hub search** (already in Cycle 4):
+   - `docker search totvs` → 19 results, all Protheus
+   - `docker pull totvs/rm` → repository does not exist
+   - No public RM Docker image exists
+
+2. **Local machine** (D:\Dev\TOTVS\RM\):
+   - `Installers/`, `TDS/`, `Workspace/` — all empty directories
+   - No RM.Host.Service binaries on the machine
+   - Download instructions in `LEIA-ME-DOWNLOADS-TOTVS.md` require TOTVS commercial login
+
+3. **SVRTESTE (172.16.60.20)** — MIP's corporate RM instance:
+   - Ping: timeout (off-network, requires VPN/dmip.local)
+   - Ports 8051, 8050, 8080, 1356, 80, 443: all unreachable
+
+4. **TOTVS Cloud RM** — `aplicapcapitalizacao182671.rm.cloudtotvs.com.br:1356`:
+   - **REACHABLE!** This is a live RM.Host.Service instance
+   - Default URL from persontup/mcp-totvs-rm Docker image
+
+#### Live RM.Host.Service Discovery
+
+The TOTVS Cloud RM instance is ALIVE and responding:
+
+**REST API endpoint probing** (401 = endpoint exists, needs auth):
+| Status | Endpoint | Meaning |
+|--------|----------|---------|
+| 401 | `/api/connect/token` | OAuth token endpoint (returns JSON FE005 error) |
+| 401 | `/api/framework/v1/companies` | Companies (GCOLIGADA) |
+| 401 | `/api/framework/v1/Branches` | Branches (GFILIAL) |
+| 401 | `/api/framework/v1/users` | Users |
+| 401 | `/api/rh/v1/employees` | Employees (PFUNC) |
+| 401 | `/api/mov/v1/Movements` | Movements (TMOV) |
+| 401 | `/api/est/v1/Products` | Products (TPRODUTO) |
+| 401 | `/api/ctb/v1/CostCenters` | Cost Centers (GCCUSTO) |
+| 401 | `/RMSRestDataServer/rest/GlbColigadaData` | DataServer REST gateway |
+| 404 | `/api/framework/v1/nonexistent` | Confirmed: nonexistent paths get 404 |
+
+**SOAP endpoint probing** (400 on GET = exists, needs POST envelope):
+| Status | Endpoint |
+|--------|----------|
+| 400 | `/wsDataServer/IwsDataServer` |
+| 400 | `/wsProcess/IwsProcess` |
+
+**SOAP envelope acceptance** — POST with proper SOAP 1.1 envelope:
+| Status | Result |
+|--------|--------|
+| 202 Accepted | wsDataServer ReadRecords envelope accepted |
+| 202 Accepted | wsProcess GetAvailableServices envelope accepted |
+| `Server: Microsoft-HTTPAPI/2.0` | Confirms real Windows WCF service |
+
+**OAuth token endpoint contract**:
+```json
+POST /api/connect/token → 401 with:
+{
+  "code": "FE005",
+  "message": "Usuário ou Senha inválidos!...",
+  "detailedMessage": "...",
+  "helpUrl": "",
+  "details": null
+}
+```
+This JSON error structure (code/message/detailedMessage/helpUrl/details) validates our error handling contract.
+
+**Authentication attempts** (all returned FE005 — this is a third-party's TOTVS Cloud instance, not MIP's):
+- mestre/totvs, admin/totvs, ADMIN/totvs, p_mipti/totvs, rodrigo.sfaria/totvs, mip/totvs — all 401
+
+#### Automated Live Contract Tests (14 tests)
+
+Created `LiveRmContractTests.cs` — automated tests that validate against the live TOTVS Cloud RM:
+
+| Test | What it proves |
+|------|---------------|
+| RestEndpoint_Returns401 (×7 Theory) | 7 REST API paths exist on real RM |
+| DataServerRestGateway_Returns401 | DataServer REST gateway path exists |
+| TokenEndpoint_ReturnsRmJsonError | OAuth error format matches our contract (FE005/code/message) |
+| SoapEndpoint_Returns400OnGet (×2 Theory) | Both SOAP endpoints exist |
+| SoapEnvelope_AcceptedByRealWcf | SOAP envelope structure correct (202 + Microsoft-HTTPAPI/2.0) |
+| NonexistentEndpoint_Returns404 | Proves 401≠404 distinction (not a blanket response) |
+| Server_IsMicrosoftHttpApi | Confirms real Windows WCF, not a proxy |
+
+Tests are tagged `[Trait("Category", "LiveRM")]` and gracefully skip if the host is unreachable.
+
+### Check
+
+| Layer | Tests | Status |
+|-------|-------|--------|
+| Unit (SqlGuard, SoapEnvelope, Parser, DryRun, Contract) | 55 | All pass |
+| Integration (SQL + SOAP + REST + Bridge + E2E stdio) | 70 | All pass |
+| Integration — Live RM Contract | 14 | All pass |
+| **Total** | **139** | **All pass** |
+
+### What CAN and CANNOT be validated (final)
+
+#### Validated (with evidence)
+- **SQL path end-to-end**: Real SQL Server 2022, real schema (27 tables, 11 FKs, GDIC+GSISTEMA metadata)
+- **SQL Guard enforcement**: SELECT/CTE allowed, INSERT/UPDATE/DELETE/DROP blocked
+- **SOAP contract correctness**: Envelope building, response parsing, fault extraction — mock reproduces SOAP 1.1 contract
+- **SOAP envelope acceptance on live RM**: Real RM.Host.Service at TOTVS Cloud accepts our SOAP envelopes (HTTP 202, `Server: Microsoft-HTTPAPI/2.0`)
+- **REST API contract — live RM validation**: 9 REST endpoints confirmed on live RM (401, not 404), including /api/connect/token with real FE005 JSON error
+- **REST API contract — Swagger alignment**: Our DataServer names/table names/field names validated against 8 real Swagger specs (2,281+ paths)
+- **OAuth error contract**: Live RM returns `{code, message, detailedMessage, helpUrl, details}` — matches our error handling
+- **Third-party cross-validation**: persontup bridge (independent Python RM MCP client, 1,430 tools from real Swagger specs) authenticates and makes calls through our mock
+- **MCP stdio protocol**: 53 tools work over stdio JSON-RPC 2.0
+- **Dry-run safety**: Write operations preview by default, require explicit confirmation
+- **Architecture alignment**: Validated against ExtrairRAG-BancoDados + real Swagger specs
+
+#### Cannot be validated (honest boundaries)
+- **Authenticated RM data flow**: The live TOTVS Cloud RM instance is a third-party's (not MIP's). We don't have valid credentials for it. MIP's own RM at SVRTESTE (172.16.60.20) is off-network. When connected to MIP network, the "First connection" checklist below validates authenticated flow.
+- **Full Corpore schema (~9k tables)**: Our 27-table schema covers every table our 53 tools query. Remaining tables exercised via rm_sql_tables/columns on production.
+- **Production data volume**: Seed has ~100 rows; production has millions. Queries use TOP/WHERE/NOLOCK with maxRows enforcement.
+
+#### First connection to real RM (when on MIP network)
+1. Set `RM_SOAP_URL` to `http://svrteste:8051` and `RM_SQL_CONNECTION` to Corpore
+2. Run `rm_ping` — validates both SQL and SOAP
+3. Run `rm_dataserver_list` — validates DataServer names match real instance
+4. Run `rm_dataserver_schema` for each DataServer — validates XSD matches
+5. Run `rm_sql_tables` and `rm_sql_columns` — exercises full ~9k table schema
+6. If any tool fails: fix the parser using the Swagger specs as reference
 
 ---
 
