@@ -12,6 +12,8 @@ public class DockerFixture
     public string SoapBaseUrl { get; } = "http://localhost:8051";
     public string SoapUser { get; } = "mestre";
     public string SoapPass { get; } = "totvs";
+
+    public string BridgeBaseUrl { get; } = "http://localhost:8000";
 }
 
 [CollectionDefinition("Docker")]

@@ -241,6 +241,7 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             return
 
         # REST framework endpoints matching real Swagger spec paths
+        # Bridge prepends /api basePath, so handle both /api/... and /... paths
         if "/framework/v1/companies" in self.path:
             self._send_json(200, {"hasNext": False, "total": 2, "items": [
                 {"id": 1, "nomeFantasia": "MIP Engenharia", "federalId": "12345678000100", "name": "MIP Engenharia S.A.", "ativo": True},
@@ -253,6 +254,42 @@ class RmSoapHandler(BaseHTTPRequestHandler):
                 {"id": "1.1", "companyId": 1, "name": "Matriz RJ"},
                 {"id": "1.2", "companyId": 1, "name": "Filial SP"}
             ]})
+            return
+
+        # REST DataServer paths (rm_rest.py pattern: /RMSRestDataServer/rest/{ds}/{action})
+        if "/RMSRestDataServer/rest/" in self.path:
+            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            ds_name = parts[0] if parts else ""
+            if ds_name in DATASERVER_LIST:
+                import json as _json
+                self._send_json(200, {"dataServer": ds_name, "items": [
+                    {"CODCOLIGADA": 1, "source": "mock-rest", "dataServer": ds_name}
+                ], "hasNext": False, "total": 1})
+            else:
+                self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
+            return
+
+        if "/RMSRestDataServer/getAvailableServices" in self.path:
+            import json as _json
+            self._send_json(200, [{"name": ds} for ds in DATASERVER_LIST])
+            return
+
+        if "/RMSRestDataServer/service/" in self.path and "/schema" in self.path:
+            parts = self.path.split("/service/")[1].split("/")
+            ds_name = parts[0] if parts else ""
+            schema = DATASERVER_SCHEMAS.get(ds_name, DATASERVER_SCHEMAS.get("GlbColigadaData", ""))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/xml; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(schema.encode("utf-8"))
+            return
+
+        # Catch-all REST API handler for any /api/... path not handled above
+        # Returns ApiQueryResponse format matching real RM Swagger specs
+        if self.path.startswith("/api/") or any(self.path.startswith(f"/{m}/") for m in ("financial", "mov", "est", "ctb", "cmp", "ctr", "rh", "fiscal", "fis", "pat", "wms", "backoffice", "bis", "construction-projects")):
+            import json as _json
+            resource = self.path.rstrip("/").split("/")[-1]
+            self._send_json(200, {"hasNext": False, "total": 0, "items": [], "_mock": True, "_path": self.path, "_resource": resource})
             return
 
         if "MEX?wsdl" in self.path or "wsDataServer" in self.path:
@@ -294,6 +331,17 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             return
 
         if not self._check_auth():
+            return
+
+        # REST DataServer write paths (rm_rest.py: POST/PUT/PATCH to /RMSRestDataServer/rest/{ds}/...)
+        if "/RMSRestDataServer/rest/" in self.path:
+            import json as _json
+            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            ds_name = parts[0] if parts else ""
+            if ds_name in DATASERVER_LIST:
+                self._send_json(200, {"status": "ok", "dataServer": ds_name, "operation": "write"})
+            else:
+                self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
             return
 
         soap_action = self.headers.get("SOAPAction", "").strip('"')
@@ -342,6 +390,33 @@ class RmSoapHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(fault.encode("utf-8"))
 
+    def do_PUT(self):
+        self._handle_rest_write("PUT")
+
+    def do_PATCH(self):
+        self._handle_rest_write("PATCH")
+
+    def do_DELETE(self):
+        self._handle_rest_write("DELETE")
+
+    def _handle_rest_write(self, method):
+        if not self._check_auth():
+            return
+        if "/RMSRestDataServer/rest/" in self.path:
+            parts = self.path.split("/RMSRestDataServer/rest/")[1].split("/")
+            ds_name = parts[0] if parts else ""
+            if ds_name in DATASERVER_LIST:
+                if method == "DELETE":
+                    self.send_response(204)
+                    self.end_headers()
+                else:
+                    self._send_json(200, {"status": "ok", "dataServer": ds_name, "operation": method.lower()})
+            else:
+                self._send_json(404, {"error": f"DataServer '{ds_name}' not found"})
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def _send_json(self, code, data):
         import json as _json
         body = _json.dumps(data).encode("utf-8")
@@ -353,6 +428,16 @@ class RmSoapHandler(BaseHTTPRequestHandler):
 
     def _check_auth(self):
         auth = self.headers.get("Authorization", "")
+
+        # Accept Bearer token (from OAuth /connect/token flow)
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+            if token == "mock-jwt-token-for-testing":
+                return True
+            self.send_response(401)
+            self.end_headers()
+            return False
+
         if not auth.startswith("Basic "):
             self.send_response(401)
             self.send_header("WWW-Authenticate", 'Basic realm="RM.Host.Service"')
