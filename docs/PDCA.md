@@ -243,9 +243,10 @@ This proves: an **independent RM MCP client implementation** (not our code) succ
 | Unit (SqlGuard, SoapEnvelope, Parser, DryRun, Contract) | 75 | All pass |
 | Integration (SQL + SOAP + REST Contract) | 34 | All pass |
 | Integration — Bridge Cross-Validation | 12 | All pass |
-| **Total (dotnet test)** | **121** | **All pass** |
+| Integration — E2E stdio (MCP server process) | 24 | All pass |
+| **Total (dotnet test)** | **145** | **All pass** |
 
-E2E stdio validation (49 tools + rm_sql_fks + metadata) was done interactively in Cycle 2 — 53 calls, 42 data values verified.
+E2E stdio tests start the rm-mcp server process, perform MCP handshake over JSON-RPC 2.0 stdio, then exercise 53 tools and verify data from Docker SQL + SOAP. Covers: tool listing (≥49), env param enforcement, SQL queries (SELECT + INSERT rejection), all domain modules (HR, Finance, Accounting, Purchasing, Global), SOAP tools, and dry-run safety.
 
 ### What CAN and CANNOT be validated (updated)
 
@@ -261,7 +262,16 @@ E2E stdio validation (49 tools + rm_sql_fks + metadata) was done interactively i
 - **Architecture alignment**: Validated against ExtrairRAG-BancoDados + real Swagger specs
 
 #### Cannot be validated (with documented search attempt)
-- **Live RM.Host.Service responses**: RM is proprietary Windows software (TOTVS). No Docker image exists (Docker Hub, web, package registries searched). TOTVS Cloud endpoint unreachable (private customer instance). MIP's SVRTESTE is on dmip.local (requires VPN). persontup/mcp-totvs-rm is a *client*, not an RM instance. **Mitigation**: cross-validation via persontup bridge proves our mock implements the same API contract that a real RM client (written by a third party from real Swagger specs) expects.
+- **Live RM.Host.Service responses**: Exhaustive Docker search performed:
+  - `docker search totvs` → 19 results, all Protheus (AppServer/DBAccess/LicenseServer), zero RM
+  - `docker search "totvs rm"` / `docker search "rm.host"` / `docker search "corpore"` → no results
+  - `docker pull totvs/rm` → "repository does not exist"
+  - `docker pull totvs/rm-host-service` → "repository does not exist"
+  - persontup/mcp-totvs-rm:1.0 inspected: pure Python FastAPI (Dockerfile confirms `uv` + `uvicorn`), no RM binaries, no .dll/.exe
+  - TOTVS Cloud endpoint `aplicapcapitalizacao182671.rm.cloudtotvs.com.br:1356` → unreachable (private customer instance)
+  - MIP's SVRTESTE (172.16.60.20) → on dmip.local, requires VPN (off-network)
+  - RM.Host.Service is a Windows WCF Service requiring .NET Framework 4.x, licensed TOTVS installer, and Corpore DB. No trial/community edition exists. TOTVS Docker ecosystem is Protheus-only.
+  **Mitigation**: cross-validation via persontup bridge (independent RM MCP client, 1,430 tools from real Swagger specs) proves our mock implements the same API contract that a real RM client expects. E2E stdio tests exercise 53 tools over the actual MCP transport.
 - **Full Corpore schema (~9k tables)**: Our 27-table schema covers every table our tools query. The remaining tables would be exercised via rm_sql_tables/columns discovery on production.
 - **Production data volume**: Seed has ~100 rows; production has millions. Performance differs but queries use TOP/WHERE/NOLOCK with maxRows enforcement.
 
