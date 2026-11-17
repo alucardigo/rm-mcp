@@ -52,6 +52,10 @@ public class StdioE2ETests : IDisposable
         var candidates = new[]
         {
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "RmMcp.Server", "bin", "Release", "net10.0", "rm-mcp.dll")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "RmMcp.Server", "bin", "Debug", "net10.0", "rm-mcp.dll")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
                 "src", "RmMcp.Server", "bin", "Release", "net9.0", "rm-mcp.dll")),
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
                 "src", "RmMcp.Server", "bin", "Debug", "net9.0", "rm-mcp.dll")),

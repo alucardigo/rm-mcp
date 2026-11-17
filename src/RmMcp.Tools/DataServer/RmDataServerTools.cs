@@ -66,6 +66,79 @@ public static class RmDataServerTools
         });
     }
 
+    [McpServerTool(Name = "rm_dataserver_read_paged")]
+    [Description("Lê registros de um DataServer com paginação via SOAP ReadViewWithLimit")]
+    public static async Task<string> ReadViewPaged(
+        [Description("Ambiente: 'teste' ou 'producao'")] string env,
+        [Description("Nome do DataServer")] string dataServer,
+        [Description("Filtro SQL WHERE")] string? filter = null,
+        [Description("Contexto chave=valor separado por ;")] string? context = null,
+        [Description("Registro inicial (0-based, padrão 0)")] int? startRecord = null,
+        [Description("Máximo de registros por página (padrão 100)")] int? maxRecords = null)
+    {
+        var config = ToolHelper.LoadConfig(env);
+        using var client = ToolHelper.CreateSoap(config);
+
+        var start = startRecord ?? 0;
+        var max = Math.Clamp(maxRecords ?? 100, 1, 1000);
+
+        var envelope = SoapEnvelopeBuilder.Build("ReadViewWithLimit",
+            new SoapParam("DataServerName", dataServer),
+            new SoapParam("Filtro", filter ?? ""),
+            new SoapParam("Contexto", context ?? ""),
+            new SoapParam("StartRecord", start.ToString()),
+            new SoapParam("MaxRecords", max.ToString()));
+
+        var response = await client.SendAsync(
+            SoapEnvelopeBuilder.DataServerEndpoint,
+            SoapEnvelopeBuilder.DataServerAction("ReadViewWithLimit"),
+            envelope);
+
+        var dataXml = SoapResponseParser.ExtractResult(response, "ReadViewWithLimit");
+        var records = SoapResponseParser.ParseDataXml(dataXml);
+
+        return ToolHelper.ToJson(new
+        {
+            dataServer,
+            startRecord = start,
+            maxRecords = max,
+            recordCount = records.Count,
+            hasMore = records.Count == max,
+            records,
+        });
+    }
+
+    [McpServerTool(Name = "rm_dataserver_count")]
+    [Description("Conta total de registros em um DataServer via SOAP GetTotalRecords")]
+    public static async Task<string> GetTotalRecords(
+        [Description("Ambiente: 'teste' ou 'producao'")] string env,
+        [Description("Nome do DataServer")] string dataServer,
+        [Description("Filtro SQL WHERE")] string? filter = null,
+        [Description("Contexto chave=valor separado por ;")] string? context = null)
+    {
+        var config = ToolHelper.LoadConfig(env);
+        using var client = ToolHelper.CreateSoap(config);
+
+        var envelope = SoapEnvelopeBuilder.Build("GetTotalRecords",
+            new SoapParam("DataServerName", dataServer),
+            new SoapParam("Filtro", filter ?? ""),
+            new SoapParam("Contexto", context ?? ""));
+
+        var response = await client.SendAsync(
+            SoapEnvelopeBuilder.DataServerEndpoint,
+            SoapEnvelopeBuilder.DataServerAction("GetTotalRecords"),
+            envelope);
+
+        var result = SoapResponseParser.ExtractResult(response, "GetTotalRecords");
+
+        return ToolHelper.ToJson(new
+        {
+            dataServer,
+            totalRegistros = int.TryParse(result, out var total) ? total : -1,
+            filtro = filter ?? "(sem filtro)",
+        });
+    }
+
     [McpServerTool(Name = "rm_dataserver_record")]
     [Description("Lê um registro específico por chave primária via SOAP ReadRecord")]
     public static async Task<string> ReadRecord(

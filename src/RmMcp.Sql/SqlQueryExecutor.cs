@@ -93,6 +93,21 @@ public sealed class SqlQueryExecutor : IDisposable
         };
     }
 
+    public async Task<int> ExecuteNonQueryAsync(string sql,
+        Dictionary<string, object?>? parameters = null,
+        int timeoutSeconds = 30, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = timeoutSeconds };
+        if (parameters != null)
+            foreach (var (name, value) in parameters)
+                cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public void Dispose() { }
 }
 

@@ -31,8 +31,16 @@ public static class SoapEnvelopeBuilder
     public static string ProcessAction(string operation) =>
         $"http://www.totvs.com/IwsProcess/{operation}";
 
+    public static string LoginAction(string operation) =>
+        $"http://www.totvs.com/IwsLogin/{operation}";
+
     public const string DataServerEndpoint = "wsDataServer/IwsDataServer";
     public const string ProcessEndpoint = "wsProcess/IwsProcess";
+    public const string LoginEndpoint = "wsLogin/IwsLogin";
+    public const string ConsultaSqlEndpoint = "wsConsultaSQL/IwsConsultaSQL";
+
+    public static string ConsultaSqlAction(string operation) =>
+        $"http://www.totvs.com/IwsConsultaSQL/{operation}";
 }
 
 public readonly record struct SoapParam(string Name, string Value, bool IsCdata = false);

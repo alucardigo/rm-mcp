@@ -21,6 +21,12 @@ internal static class ToolHelper
     internal static RmSoapClient CreateSoap(RmConfig config) =>
         new(config.SoapBaseUrl, config.SoapUsername, config.SoapPassword);
 
+    internal static RmRestClient CreateRest(RmConfig config) =>
+        new(config.SoapBaseUrl, config.SoapUsername, config.SoapPassword);
+
+    internal static RmWcfClient CreateWcf(RmConfig config) =>
+        new(config.WcfHost, config.WcfPort);
+
     internal static string ToJson(object result) =>
         JsonSerializer.Serialize(result, JsonOptions);
 
